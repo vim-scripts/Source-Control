@@ -23,7 +23,7 @@
 "   * Add support for 'checked out files' browsing
 
 " Add ourselves to the loaded modules
-call SrcCtl_RegisterModule( 'st', 1.4, 'Star Team' )
+call SrcCtl_RegisterModule( 'st', 1.5, 'Star Team' )
 
 " History:
 "     1.1:
@@ -37,6 +37,9 @@ call SrcCtl_RegisterModule( 'st', 1.4, 'Star Team' )
 "       - Give message on missing files for history
 "     1.4:
 "       - Make it run
+"     1.5:
+"       - Auto-Update status when checking out an 'Unknown' file.
+"       - Preserve file status
 
 
 fun! s:Error(msg)
@@ -83,9 +86,21 @@ fun! SourceControlDo_st(cmd, opts, count, file1, repositoryfile1, comment)
   elseif a:cmd==? 'Checkout'
     let opts='o'.((a:opts =~ ':forcedir:')?'af':'')
     let extra=((a:opts =~ ':merge:')?' -merge':'').((a:opts =~ ':recurse:')? ' -is':'').((a:opts =~ ':overwrite:')?' -o':'')
+
+    " Maintain current status
+    if a:opts =~ ':overwrite:' && a:opts !~ ':lock:' && a:opts !~ ':unlock:'
+"      let lock=lock.filereadable(a:file1)?(filewritable(a:file1)?' -rw':' -u -ro'):' -u -ro'
+"      if !filereadable(a:file1) || !filewritable(a:file1)
+        let lock=lock.' -u -ro'
+"      endif
+    endif
+
     "echo 'options '.a:opts
     let ret=s:st_cmd('co'.lock.extra.comment, a:file1, a:repositoryfile1, a:count,  opts)
     if ret=~': skipped\>' && (a:opts =~ ':lock:' || a:opts =~ ':exclusive:')
+      if ret =~ 'file status is Unknown\>'
+        let ret=s:st_Exec(a:repositoryfile1, 'update-status -q', 0)
+      endif
       call s:st_cmd('lck'.lock.comment, a:file1, a:repositoryfile1, a:count,  'o')
     endif
 
@@ -102,7 +117,7 @@ fun! SourceControlDo_st(cmd, opts, count, file1, repositoryfile1, comment)
     call s:st_cmd( cmdopts.extra.lock.comment, a:file1, a:repositoryfile1, 0, 'o')
   elseif a:cmd==?'Status'
     if a:opts =~ ':return:'
-      return s:st_GetStatus( a:file1, a:repositoryfile1, 1, 0) ", a:opts =~ ':extras:', a:opts =~ ':locks:')
+      return s:st_GetStatus( a:file1, a:repositoryfile1, 1, a:opts =~ ':force:' ) ", a:opts =~ ':extras:', a:opts =~ ':locks:')
     elseif a:opts =~ ':text:'
       call s:st_cmd( 'list', a:file1, a:repositoryfile1, 0, '')
     else
@@ -132,7 +147,7 @@ fun! s:RepFilePrintable(repfile)
 endfun
 
 " Starteam Exec function - work out password/repository and filename commands.
-fun! s:st_Exec( repositoryfile, cmd )
+fun! s:st_Exec( repositoryfile, cmd, passive )
   let lhs=fnamemodify( a:repositoryfile, ':h')
   let rhs=fnamemodify( a:repositoryfile, ':t')
   let setuser=0
@@ -156,6 +171,7 @@ fun! s:st_Exec( repositoryfile, cmd )
         " Already disabled
         if exists('s:st_username_disable') | return | endif
 
+        if a:passive | return | endif
         let username=input('Star Team User Name:')
         if username==''
           echo 'Cancelled'
@@ -174,6 +190,7 @@ fun! s:st_Exec( repositoryfile, cmd )
     elseif exists('g:st_password')
       let pass=g:st_password
     else
+      if a:passive | return '?' | endif
       let pass=inputsecret('Star Team password for '.username.':')
       let setpass=1
       "let s:st_password_{username}=pass
@@ -231,7 +248,7 @@ fun! s:st_cmd(cmd, file1, repositoryfile1, count, opts)
   let repfile=a:repositoryfile1.((isdirectory(a:file1) && match(a:repositoryfile1,'[^\\/]$'))?'\':'')
   let autoread=&autoread
   setlocal autoread
-  let ret= s:st_Exec(repfile, a:cmd.ver.force)
+  let ret= s:st_Exec(repfile, a:cmd.ver.force, 0)
   checktime
   if !autoread | setlocal noautoread | endif
   let ret=substitute(ret,"^[^\n]*\n",'','')
@@ -244,11 +261,12 @@ endfun
 " Get and interpret a status from a listing.
 fun! s:st_GetStatus( file1, repositoryfile1, include_brief, force)
   if a:force 
-    call s:st_Exec(a:repositoryfile1, 'update-status -q')
+    call s:st_Exec(a:repositoryfile1, 'update-status -q', 0)
   elseif exists('b:zz_st_not_in_view')
     return "Not in View".((a:include_brief)?"\n": "")
   endif
-  let res=s:st_Exec(a:repositoryfile1, 'list')
+  let res=s:st_Exec(a:repositoryfile1, 'list', 1)
+  if res == '?' | return ((a:include_brief)?"?\n?": "?") | endif
 
   let res=substitute(res,"^[^\n]*\n",'','') " remove folder name
 

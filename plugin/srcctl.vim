@@ -119,7 +119,7 @@ let g:srcctl_name_p4='Perforce'
 "
 " TODO:
 "
-let g:srcctl_version='2.3'
+let g:srcctl_version='2.4'
 " History:
 " 2.2: Various fixes
 "   - Fix up reusing of comments
@@ -127,6 +127,9 @@ let g:srcctl_version='2.3'
 " 2.3:
 "   - Handle missing directories.
 "   - Handle no .project better
+" 2.4:
+"   - Update file status when doing \ss
+"   - Make sure status is updated (For starteam)
 
 
 " --------------------------- Generic ----------------------------------
@@ -222,7 +225,7 @@ fun! s:SCCommandAttrib( cmd)
   elseif a:cmd=~?'\<RawS\%[tatus]\>'          " RawS^tatus
     return 'Status:text:'
   elseif a:cmd=~?'\<S\%[tatus]\>'         " S^tatus
-    return 'Status:'
+    return 'Status:returnstatus:return:force:'
   elseif a:cmd=~?'\<Sum\%[mary]\>'        " Sum^mary
     return 'History:text'
   elseif a:cmd=~?'\<H\%[istory]\>'        " H^istory
@@ -322,7 +325,10 @@ fun! s:SCDoCommand(bang, count, cmd, ... )
         call s:SCDiff( ptype, f{i}, prj{i}, 0, a:count )
       elseif s:has_function('SourceControlDo_',ptype)
         " Execute the action
-        call SourceControlDo_{ptype}(command, opts_{ptype}, a:count, f{i}, prj{i}, comment)
+        let ret=SourceControlDo_{ptype}(command, opts_{ptype}, a:count, f{i}, prj{i}, comment)
+        if attrib =~ ':returnstatus:'
+          call confirm( s:UpdateStatusVars( ret, bufnr(f{i})) , "&Ok" )
+        endif
       else
         echoerr "File '".f{i}."': unable to find handler for type '".ptype."'"
         return
@@ -541,7 +547,7 @@ fun! s:SCDiff(sctype, filename, project, Ver1, Ver2)
   let res=SourceControlDo_{a:sctype}( 'Checkout', ':overwrite:noupdate:forcedir:', a:Ver2, ssfile, a:project, '')
 
   if filereadable(ssfile)
-    call s:SetDiffSplit(ssfile)
+    call s:SetDiffSplit(ssfile, 1)
     exe "norm \<C-W>\<C-X>"
   else
     echo confirm("Could not get file.", "OK",0)
@@ -720,10 +726,16 @@ aug END
 
 fun! s:SetStatus( bufident, filename, sctype, projname, opts)
   if s:has_function('SourceControlDo_', a:sctype)
-    let result=SourceControlDo_{a:sctype}('Status',a:opts.':return:',0,a:filename, a:projname, '')
-    call setbufvar(a:bufident, 'checked_out_status',matchstr(result,"^[^\n]*"))
-    call setbufvar(a:bufident, 'checked_out_status_brief',matchstr(result,"\n\\@<=.*$"))
+    call s:UpdateStatusVars( SourceControlDo_{a:sctype}('Status',a:opts.':return:',0,a:filename, a:projname, ''), a:bufident)
   endif
+endfun
+fun! s:UpdateStatusVars( result, bufident)
+    let ret=matchstr(a:result,"^[^\n]*")
+    if (a:bufident != -1 )
+      call setbufvar(a:bufident, 'checked_out_status',ret)
+      call setbufvar(a:bufident, 'checked_out_status_brief',matchstr(a:result,"\n\\@<=.*$"))
+    endif
+    return ret
 endfun
 
 " get the current lock status from VSS and place it in b:checked_out_status
@@ -832,7 +844,7 @@ command! -complete=file -bang -nargs=+ -count=0 SS call s:DoSrcSafe(<q-bang>,<co
 command! -complete=dir -bang -nargs=* -count=0 SDeploy call s:DoSrcSafe(<q-bang>,<count>, 'Deploy',<f-args>)
 command! -complete=dir -bang -nargs=* -count=0 SPLocked call s:DoCheckedOutFiles(<q-bang>, <f-args>)
 
-command! -complete=file -nargs=1 -count=0 VDiff call s:SetDiffSplit(<f-args>)
+command! -complete=file -bang -nargs=1 -count=0 VDiff call s:SetDiffSplit(<f-args>, <q-bang> != '!')
 
 
 let s:scMenuWhere=0
@@ -886,41 +898,46 @@ aug END
 
 fun! s:ReclearDiffMode()
   if exists('b:srcsafe_diffmode') && !b:srcsafe_diffmode && exists('b:srcsafe_diffbuffvars')
-        exe b:srcsafe_diffbuffvars
-        unlet b:srcsafe_diffbuffvars
+    exe b:srcsafe_diffbuffvars
+    unlet b:srcsafe_diffbuffvars
   endif
 endfun
 
 " 
 fun! s:ClearDiffMode()
-    if exists('g:srcsafe_diffbuffnr')
-        let diffbuffnr=g:srcsafe_diffbuffnr
-        unlet g:srcsafe_diffbuffnr
-        let win=bufwinnr(diffbuffnr)
-        while winbufnr(win) != -1 && !getwinvar(win,'&diff')
-            let win=win+1
-            while winbufnr(win) != -1 && winbufnr(win) != diffbuffnr
-                let win=win+1
-            endwhile
-        endwhile
-        let curwin=winnr()
-        if winbufnr(win)!= -1
-            exe win.'winc w'
-            exe b:srcsafe_diffbuffvars
-            if &fdc==0
-                norm zn
-            endif
-            exe curwin.'winc w'
-        endif
-        exe 'bdel '.g:srcsafe_diffbuff_difnr
+  if exists('g:srcsafe_diffbuffnr')
+    let diffbuffnr=g:srcsafe_diffbuffnr
+    unlet g:srcsafe_diffbuffnr
+    let win=bufwinnr(diffbuffnr)
+    while winbufnr(win) != -1 && !getwinvar(win,'&diff')
+      let win=win+1
+      while winbufnr(win) != -1 && winbufnr(win) != diffbuffnr
+        let win=win+1
+      endwhile
+    endwhile
+    let curwin=winnr()
+    if winbufnr(win)!= -1
+      exe win.'winc w'
+      exe b:srcsafe_diffbuffvars
+      if &fdc==0
+        norm zn
+      endif
+      exe curwin.'winc w'
+    endif
+    if g:srcsafe_diffbuff_delbuffer
+      exe 'bdel '.g:srcsafe_diffbuff_difnr
+    else
+      call setbufvar(g:srcsafe_diffbuff_delbuffer, 'srcsafe_diffmode', 0)
+    endif
+    unlet g:srcsafe_diffbuff_delbuffer
 
     let b:srcsafe_diffmode=0
-        "unlet b:srcsafe_diffbuffvars
-        unlet g:srcsafe_diffbuff_difnr
-    endif
+    "unlet b:srcsafe_diffbuffvars
+    unlet g:srcsafe_diffbuff_difnr
+  endif
 endfun
 
-fun! s:SetDiffSplit( ssfile )
+fun! s:SetDiffSplit( ssfile, delbuffer )
     call s:ClearDiffMode()
     let diffs=''
     let win=1
@@ -931,11 +948,25 @@ fun! s:SetDiffSplit( ssfile )
         endif
         let win=win+1
     endwhile
-  let b:srcsafe_diffmode=1
-    let b:srcsafe_diffbuffvars='set nodiff '. (&scb?'': 'no').'scb sbo='.&sbo.' '.(&wrap?'': 'no' ).'wrap fdm='.&fdm.' fdc='.&fdc.' '.(&fen?'': 'no').'fen '.(&scb?'': 'no').'scb fdl='.&fdl
+    let b:srcsafe_diffmode=1
+    let vars=s:GetDiffSplitVars()
+    let b:srcsafe_diffbuffvars=vars
     let g:srcsafe_diffbuffnr=winbufnr(winnr())
+
+    " Vertical diff split
     exe (g:scDiffVertical?'vert': '').' diffsplit '.a:ssfile
+
+    " Make the defaults the same as the file we are comparing against
+    if !a:delbuffer
+      let b:srcsafe_diffbuffvars=vars
+      let b:srcsafe_diffmode=1
+    endif
     let g:srcsafe_diffbuff_difnr=winbufnr(winnr())
+    let g:srcsafe_diffbuff_delbuffer=a:delbuffer
+endfun
+
+fun! s:GetDiffSplitVars()
+    return 'set nodiff '. (&scb?'': 'no').'scb sbo='.&sbo.' '.(&wrap?'': 'no' ).'wrap fdm='.&fdm.' fdc='.&fdc.' '.(&fen?'': 'no').'fen '.(&scb?'': 'no').'scb fdl='.&fdl
 endfun
 
 " Hide a diff buffer
