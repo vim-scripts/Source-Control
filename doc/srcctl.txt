@@ -1,0 +1,200 @@
+*srcctl.txt*	For Vim version 6.2. Last change: 2003 Aug 21
+
+		SourceControl Reference Manual	by Michael Geddes
+
+Source Control 					     *srcctl* *source-control*
+
+1. Introduction					|srcctl-intro|
+2. Setup					|srcctl-setup|
+3. Command Summary				|srcctl-command|
+4. Configuration				|srcctl-config|
+5. Creating New Integrations			|srcctl-new|
+6. TODO						|srcctl-todo|
+
+This is based on my SourceSafe integration scripts, which has been expanded
+to provide a more generic solution.
+
+The script provides simultaneous support for various Source Control modules.
+
+The script is based on the contributions of (at least) these people:
+  David Eggum (borrowed code)
+  Vikas Agnihotri (fixes & suggestions)
+  Zak Beck (fixes & suggestions)
+
+==============================================================================
+1. Getting Going/Introduction				*srcctl-intro*
+
+Each Source Control module requires a unique identifier.  This is used to load
+the correct module, as well as to call the correct functions.
+
+Please contact me to register your identifier here:	*srcctl-identifier*
+    vss:  Visual Source Safe			|srcctl-vss|
+    st:   Star Team  - StarBase/Borland		|srcctl-st|
+These are unimplemented, but as they are no-brainers, consider them reserved.
+    cvs:  CVS (Unimplemented)
+    p4:   Perforce (Unimplemented)
+
+
+==============================================================================
+2. Setup						*srcctl-setup*
+
+The srcctl.vim script should be located in the plugin/ directory in the
+'runtimepath' or sourced at startup. The document files (srcctl*.txt), should
+be placed under doc/ in the 'runtimepath' (don't forget to use :helptags).
+
+Since the individual Source-control modules will get loaded on demand, the
+next thing is to make sure your modules are installed into the runtime path.
+The paths are searched in the following order (where {id} is the
+|srcctl-identifier| of the module):
+    srcctl_{id}.vim
+    srcctl/{id}.vim
+    srcctl/srcctl_{id}.vim
+
+The script works by scanning for a file  '.project' which should be in the
+root directory of the project.  This file should contain a single line, which
+starts with the identifier for the integration, followed by ':' and the
+module-specific specifier for the folder.
+eg: for Visual Source Safe >
+  vss:@\\central\srcctl@$/MyProject
+or for Star Team >
+  st:username:password@central:49200/Project/View
+
+
+
+Note that in the following, you can specify a count for Get, Diff,  (checkout
+??) This does a get of/diff against the specified version.
+
+==============================================================================
+3. Command Summary					      *srcctl-command*
+
+Here are the commands availble: (replace \ with <localleader>)
+
+Command			Key		Description	
+------------------------------------------------------------------------------
+:SDiff			{ver}\sf	Diff (Vim Diff)		  *SDiff*
+:SDiffClose		\sF		Close Diff		  *SDiffClose*
+:STDiff			{ver}\sd	Diff (text diff)	  *STDiff*
+:SCheckout		{ver}\sk	Checkout		  *SCheckout*
+:SLock			{ver}\s<c-k>	Checkout (No Get)	  *SLock*
+:SUnlock		\s<c-U>		Unlock the file		  *SUnlock*
+:SGet			{ver}\sg	Get			  *SGet*
+:SMerge			\sG		Merge get		  *SMerge*
+:SUpdate		\su		Update (checkin)	  *SUpdate*
+:SStatus		\ss		Status			  *SStatus*
+			{count}\sh	History (last n / 3)
+:SHistory		\sH		History window 		    *SHistory*
+:SAdd			\sA		Add file to sourcesafe	        *SAdd*
+:SRepeatUpdate		\\u		Update, same comment   *SRepeatUpdate*
+:SUpdateLocked		\sU		Update and keep locked *SUpdateLocked*
+:SRepeatUpdateLocked	\\U		Update  locked.	 *SRepeatUpdateLocked*
+:SDeploy				Deploy file/directory 	     *SDeploy*
+:SPLocked[!]  [project] [username]	View locked files	    *SPLocked*
+
+SPLocked[!]  [project] [username]
+  View locked files for the given project (or the cwd) - ! specifies recursive.
+  Username can be left blank (for current user) or specified as '*' for all
+  users.
+Commands are similar to the browser
+   <enter> : open file or directory
+   O : open new window for file/directory
+   o : open file in previously visited window
+   p : preview the file
+   f : diff mode
+   u : update file
+   U : repeat update
+   K : checkout
+   L : lock
+
+==============================================================================
+4. Configuration					       *srcctl-config*
+
+Options: Define these in your own .vimrc - defaults in brackets.
+
+Option		Default	    Description
+------------------------------------------------------------------------------
+scMenuPath	 &Version   Menu path prefix SourceControl	  *scMenuPath*
+scMenuPlace	 40	    The order specifier prefix for menus *scMenuPlace*
+scDiffVertical	 1	    Vertical split for Diff 	      *scDiffVertical*
+scHistVertical	 1	    Vertical split for history	      *scHistVertical*
+scSetRuler	 1	    Set the ruler to include status	  *scSetRuler*
+scMaintainStatus 1	    Maintain buffer status for ruler*scMaintainStatus*
+scShowAllLocks	 1	    Show all locks on the status line *scShowAllLocks*
+scShowExtra	 1	    Show extra status information	 *scShowExtra*
+scUserName	 $USERNAME  Username for Current user		  *scUserName*
+
+NOTES:
+* Allow closing of the diff buffer, returning (as best as I can get) the
+  screen to how it was before the diff.
+ - Also closes the last srcsafe diff before opening the new one.
+ - Clears 'diff' on all other windows, and tries (as best as it can) to
+   restore the 'diff' when the srcsafe diff closes.
+* If you close the temporary diff file -then this also causes the file view to
+  be restored
+* Closing the original file when doing a srcsafe diff causes the diff file
+  to be closed as well.
+==============================================================================
+5. Creating New Integrations					*srcctl-new*
+
+The whole point of a generic source-control interface is that it should be
+easy to add new source-control methods to.
+
+The first thing to do is to decide on a |srcctl-identifier| which will be used
+to identify the connection type. Once this is done, there is one function and
+a couple of variables that must be implemented and two more functions that are
+optional, but usually nice to include.
+
+First some boiler-plate code to define which modules are loaded: (replace
+{identifier} with the |srcctl-identifier| and {Full Name} with the full name
+of the source control. >
+
+    call SrcCtl_RegisterModule( {identifier}, {version}, {Full Name})
+
+That takes care of the variables.  The next function is the most important,
+and does all the operations required. >
+    function SourceControlDo_{identifier}(cmd, opts, count, file, repofile, comment)
+
+Arguments:
+    cmd		Source Control command, one of
+		    Diff     Checkout Lock     Unlock   Checkin
+		    Status   History  Add      Deploy   Dir
+    opts	Options- ':' separated options for the command.
+		    :self:                Command was specified without a name
+		    :recurse:             Command should be recursive
+		    :text:                Text output (Diff)
+		    :lock:                Lock the file
+		    :exclusive:           Exclusive lock the file
+		    :overwrite:           Overwrite the file
+		    :single:              Command takes single file only
+		    :count:               Command takes count
+		    :?write:              Ask to write first
+		    :?overwrite:          Ask to overwrite a file
+		    :?lock:               Ask to lock the file
+		    :?recurse:            Optional recurse
+		    :?comment:            Ask for comment
+		    :?reusecomment:       Ask to reuse the comment
+		    :status:              Changes the status
+		    :directory:           Default is directory
+		    :locks:               Show locks on status
+		    :extras:              Show extras on status
+		    :noupdate:            Don't update Checkout status.
+		    :forcedir:            Force the directory overwrite
+    count	Count supplied with an action. Mostly used as the version
+		number for the operation.
+    file	Filename of the file on disk.
+    repofile	The .project specification with extra directories required for
+		the file tacked on the end.
+    comment	Comment for the checkin where appropriate.  May be prefixed
+		with an @ to indicate a file.
+	
+Extra arguments may be used internal to the scripts.  The next function is
+called once for each different repository type specified on a command line.
+It takes the default options (prefixed with the command) and provides a point
+for extra arguments to be added, including any prompting.
+
+
+
+==============================================================================
+6. TODO								*srcctl-todo*
+
+
+ vim:tw=78:ts=8:ft=help:norl:

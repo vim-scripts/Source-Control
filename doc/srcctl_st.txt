@@ -1,0 +1,59 @@
+*srcctl_st.txt*	For Vim version 6.2. Last change: 2003 Aug 21
+
+		SourceControl Reference Manual	by Michael Geddes
+Source Control - Star Team		*srcctl-st* *source-control-starteam*
+
+1. Introduction			|srcctl-st-intro|
+2. Setup			|srcctl-st-setup|
+3. Configuration		|srcctl-st-config|
+4. TODO				|srcctl-st-todo|
+
+==============================================================================
+1. Introduction						    *srcctl-st-intro*
+
+This is the Star Team source control module.
+
+
+==============================================================================
+2. Setup						    *srcctl-st-setup*
+
+There are 3 main .project formats: >
+
+Specify username and password (no prompting required) >
+  st:username:password@host:port/Project/View
+
+Specify username and a password file (no prompting required) >
+  st:username:@password_file_path@host:port/Project/View
+
+Specify only host >
+  st:[username]@host:port/Project/View
+
+Optionally specify a username (prompt for username once) and no password
+specified (prompt for password once per username). The username can also be
+specified in g:st_username.  The password can be specified per username with
+g:st_password_{username} or globaly with  g:st_password.
+
+In order for the project status to work properly, you should define
+ g:st_user_{username} to be your real name.
+
+
+==============================================================================
+3. Configuration					*srcctl-st-config*
+
+The following options are specific to Star Team
+
+Option			Description
+------------------------------------------------------------------------------
+st_username		Default username if none specified in .project
+st_user_{username} 	Your full name, for detecting exclusive locks
+st_password		Default password if none specified in .project
+st_password_{username}	Password to be used for the specified user.
+
+
+==============================================================================
+4. TODO							*srcctl-st-todo*
+
+  * Add Support for History with hilighting
+  * Add support for 'checked out files' browsing
+
+ vim:tw=78:ts=8:ft=help:norl:

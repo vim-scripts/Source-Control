@@ -1,0 +1,61 @@
+*srcctl_vss.txt*	For Vim version 6.2. Last change: 2003 Aug 21
+
+		SourceControl Reference Manual	by Michael Geddes
+Source Control - Visual Source Safe    *srcctl-vss* *source-control-sourcesafe*
+
+1. Introduction			|srcctl-vss-intro|
+2. Setup			|srcctl-vss-setup|
+3. Configuration		|srcctl-vss-config|
+
+==============================================================================
+1. Introduction						    *srcctl-vss-intro*
+
+The source-safe module is based on srcsafe.vim which in turn was based on some
+old shell scripts I wrote.
+
+The script does its best to allow the user to respond to prompts.  It does
+this by always answering "no" to the prompts, then parsing the response, and
+asking the user "yes/no" using |confirm()| and then re-executing the command
+always answering "yes" if the user has pressed "yes".
+
+It is possible that there are some special cases that need handling.
+
+==============================================================================
+2. Setup						    *srcctl-vss-setup*
+
+This Source Control module requires that the sourcesafe command-line work
+without prompting for a password.  To do this, there are two main methods.
+The first is to set the the %SSDIR% enviornment variable to point to the
+repository, or to use the .project configuration to do it for you. >
+    SSDIR=\\server\share\ssdir
+The second option is to put the following line in your local srcsafe.ini: >
+    #include \\server\share\ssdir\srcsafe.ini
+
+The script also relies on being able to find ss.exe.  The script tries a couple
+of common alternatives, but this can be overidden via the environment variable
+$SS or the vim variable 'ssExecutable'. >
+    let g:ssExecutable='X:\vss path\win32\ss.exe'
+
+The format of the .project configuration is:
+    vss:[@{SSDIR-PATH}@]$/{ProjectPath}
+For example: >
+    vss:@\\file\srcsafe@$/ProjectName/
+or >
+    vss:$/ProjectName/
+
+The first variant works by setting $SSDIR before calling ss.exe.
+The second variant only works if SSDIR or the #include path are set up
+correctly.
+
+==============================================================================
+3. Configuration					*srcctl-vss-config*
+
+The following options are specific to source-safe
+
+Option		Default	    Description
+------------------------------------------------------------------------------
+ssExecutable	$SS	    May NOT have spaces - use short-filenames.
+ssDeployFile	0	    Allow deploying of files.
+
+
+ vim:tw=78:ts=8:ft=help:norl:

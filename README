@@ -1,0 +1,11 @@
+This is a mirror of http://www.vim.org/scripts/script.php?script_id=770
+
+This is designed to be a generic source-control solution.  It handles multiple different
+repository types at once.
+
+Currently, there are integrations for Visual Source Safe and StarTeam (only tested under win32).
+
+It is designed to be easily extensible, with different source-control modules being loaded on demand.
+
+There is some documentation, including how to create source-control modules.
+
